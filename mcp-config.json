@@ -1,0 +1,20 @@
+{
+  "stdio_servers": [
+    {
+      "name": "analyze_audio",
+      "command": "python3",
+      "args": ["analyze_audio.py"]
+    },
+    {
+      "name": "call_api",
+      "command": "node",
+      "args": ["call_api.js"]
+    },
+    {
+      "name": "shell_ops",
+      "command": "bash",
+      "args": ["run_lint.sh"]
+    }
+  ],
+  "sse_servers": []
+}
