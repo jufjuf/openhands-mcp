@@ -122,6 +122,43 @@ Use the following configuration under `Settings → MCP` in OpenHands:
 
 ---
 
+## 🤖 VIV Clinic Facebook Bot
+
+**NEW!** Automated customer service bot for VIV Clinic's Facebook business page:
+
+### Features
+- 🔄 **Auto-responds** to Facebook Messenger messages and post comments
+- 📞 **Collects customer info** (name, phone, inquiry topic)
+- 📊 **Saves to Google Sheets** for follow-up by staff
+- 🇮🇱 **Hebrew language support** with natural conversation flow
+- 🔗 **Real-time webhooks** for instant responses
+
+### Quick Start
+```bash
+# Configure credentials first
+python3 password_manager.py set facebook_access_token "your_token"
+python3 password_manager.py set facebook_page_id "your_page_id"
+python3 password_manager.py set google_sheet_id "your_sheet_id"
+
+# Start the bot
+python3 start_viv_bot.py
+```
+
+### Setup Guide
+See [VIV_BOT_SETUP.md](VIV_BOT_SETUP.md) for complete setup instructions including:
+- Facebook App configuration
+- Google Sheets setup
+- Webhook configuration
+- Testing procedures
+
+### Bot Components
+- **`facebook_bot.py`** - Core bot logic and conversation handling
+- **`google_sheets_manager.py`** - Customer data management
+- **`facebook_webhook.py`** - Real-time webhook server
+- **`start_viv_bot.py`** - Bot launcher with health checks
+
+---
+
 ## 🔐 Credentials Management
 
 ### Setting up API Keys and Credentials
