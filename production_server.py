@@ -6,13 +6,23 @@ Optimized for deployment on Heroku/Railway/Render
 
 import os
 from flask import Flask, request, jsonify
-from facebook_bot import FacebookBot
-from csv_manager import CSVManager
 import json
+import requests
 
 app = Flask(__name__)
-bot = FacebookBot()
-csv_manager = CSVManager()
+
+# Get credentials from environment variables
+FACEBOOK_ACCESS_TOKEN = os.environ.get('FACEBOOK_ACCESS_TOKEN')
+FACEBOOK_PAGE_ID = os.environ.get('FACEBOOK_PAGE_ID')
+FACEBOOK_APP_ID = os.environ.get('FACEBOOK_APP_ID')
+FACEBOOK_VERIFY_TOKEN = os.environ.get('FACEBOOK_VERIFY_TOKEN', 'VIV_CLINIC_VERIFY_TOKEN')
+
+# Initialize CSV manager
+try:
+    from csv_manager import CSVManager
+    csv_manager = CSVManager()
+except ImportError:
+    csv_manager = None
 
 @app.route('/')
 def home():
@@ -63,9 +73,24 @@ def home():
 def test_bot():
     """Test bot functionality"""
     try:
-        import requests
+        # Debug environment variables first
+        debug_info = {
+            "FACEBOOK_ACCESS_TOKEN": "✅ Set" if FACEBOOK_ACCESS_TOKEN else "❌ Missing",
+            "FACEBOOK_PAGE_ID": "✅ Set" if FACEBOOK_PAGE_ID else "❌ Missing",
+            "FACEBOOK_APP_ID": "✅ Set" if FACEBOOK_APP_ID else "❌ Missing",
+            "token_length": len(FACEBOOK_ACCESS_TOKEN) if FACEBOOK_ACCESS_TOKEN else 0,
+            "token_starts_with": FACEBOOK_ACCESS_TOKEN[:10] + "..." if FACEBOOK_ACCESS_TOKEN else "None"
+        }
+        
+        if not FACEBOOK_ACCESS_TOKEN:
+            return jsonify({
+                "status": "❌ Error",
+                "error": "FACEBOOK_ACCESS_TOKEN not found in environment variables",
+                "debug": debug_info
+            })
+            
         url = f"https://graph.facebook.com/v18.0/me"
-        params = {"access_token": bot.access_token}
+        params = {"access_token": FACEBOOK_ACCESS_TOKEN}
         response = requests.get(url, params=params)
         
         if response.status_code == 200:
@@ -76,27 +101,36 @@ def test_bot():
                 "page_name": data.get("name"),
                 "page_id": data.get("id"),
                 "access_token_valid": True,
-                "server_status": "Production Ready"
+                "server_status": "Production Ready",
+                "debug": debug_info
             })
         else:
             return jsonify({
                 "status": "❌ Error",
-                "error": response.text
+                "error": response.text,
+                "response_code": response.status_code,
+                "debug": debug_info
             })
             
     except Exception as e:
         return jsonify({
             "status": "❌ Error",
-            "error": str(e)
+            "error": str(e),
+            "debug": debug_info if 'debug_info' in locals() else "Debug info not available"
         })
 
 @app.route('/messages')
 def check_messages():
     """Check recent messages"""
     try:
-        import requests
+        if not FACEBOOK_ACCESS_TOKEN:
+            return jsonify({
+                "status": "❌ Error",
+                "error": "FACEBOOK_ACCESS_TOKEN not found in environment variables"
+            })
+            
         url = f"https://graph.facebook.com/v18.0/me/conversations"
-        params = {"access_token": bot.access_token, "limit": 10}
+        params = {"access_token": FACEBOOK_ACCESS_TOKEN, "limit": 10}
         response = requests.get(url, params=params)
         
         if response.status_code == 200:
@@ -119,7 +153,8 @@ def check_messages():
         else:
             return jsonify({
                 "status": "❌ Error",
-                "error": response.text
+                "error": response.text,
+                "response_code": response.status_code
             })
             
     except Exception as e:
@@ -168,12 +203,11 @@ def webhook():
     """Facebook webhook endpoint"""
     if request.method == 'GET':
         # Webhook verification
-        verify_token = "VIV_CLINIC_VERIFY_TOKEN"
         mode = request.args.get('hub.mode')
         token = request.args.get('hub.verify_token')
         challenge = request.args.get('hub.challenge')
         
-        if mode == 'subscribe' and token == verify_token:
+        if mode == 'subscribe' and token == FACEBOOK_VERIFY_TOKEN:
             print("✅ Webhook verified successfully")
             return challenge
         else:
@@ -193,12 +227,45 @@ def webhook():
                         message_text = messaging['message'].get('text', '')
                         print(f"📨 New message from {sender_id}: {message_text}")
                         
-                        # Process message with bot
-                        response = bot.process_message(sender_id, message_text)
-                        if response:
-                            bot.send_message(sender_id, response)
+                        # Save customer data if CSV manager available
+                        if csv_manager:
+                            try:
+                                csv_manager.save_customer({
+                                    'name': f'Customer_{sender_id[-4:]}',
+                                    'phone': 'Unknown',
+                                    'message': message_text,
+                                    'source': 'Facebook',
+                                    'status': 'New'
+                                })
+                            except Exception as e:
+                                print(f"Error saving customer: {e}")
+                        
+                        # Send automatic response
+                        response_text = "שלום! תודה על פנייתך לVIV Clinic. נציג שלנו יחזור אליך בהקדם. 🏥"
+                        send_facebook_message(sender_id, response_text)
         
         return 'OK', 200
+
+def send_facebook_message(recipient_id, message_text):
+    """Send message via Facebook API"""
+    try:
+        if not FACEBOOK_ACCESS_TOKEN:
+            return False
+            
+        url = f"https://graph.facebook.com/v18.0/me/messages"
+        headers = {"Content-Type": "application/json"}
+        data = {
+            "recipient": {"id": recipient_id},
+            "message": {"text": message_text},
+            "access_token": FACEBOOK_ACCESS_TOKEN
+        }
+        
+        response = requests.post(url, headers=headers, json=data)
+        return response.status_code == 200
+        
+    except Exception as e:
+        print(f"Error sending message: {e}")
+        return False
 
 @app.route('/health')
 def health_check():
@@ -206,7 +273,21 @@ def health_check():
     return jsonify({
         "status": "healthy",
         "service": "VIV Clinic Facebook Bot",
-        "version": "1.0.0"
+        "version": "1.0.1"
+    })
+
+@app.route('/debug')
+def debug_env():
+    """Debug environment variables"""
+    return jsonify({
+        "environment_vars": {
+            "FACEBOOK_ACCESS_TOKEN": "✅ Set" if FACEBOOK_ACCESS_TOKEN else "❌ Missing",
+            "FACEBOOK_PAGE_ID": "✅ Set" if FACEBOOK_PAGE_ID else "❌ Missing", 
+            "FACEBOOK_APP_ID": "✅ Set" if FACEBOOK_APP_ID else "❌ Missing",
+            "FACEBOOK_VERIFY_TOKEN": "✅ Set" if FACEBOOK_VERIFY_TOKEN else "❌ Missing"
+        },
+        "token_length": len(FACEBOOK_ACCESS_TOKEN) if FACEBOOK_ACCESS_TOKEN else 0,
+        "token_prefix": FACEBOOK_ACCESS_TOKEN[:20] + "..." if FACEBOOK_ACCESS_TOKEN else "None"
     })
 
 if __name__ == '__main__':

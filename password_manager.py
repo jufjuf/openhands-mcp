@@ -15,11 +15,17 @@ class PasswordManager:
         self.load_credentials()
     
     def load_credentials(self):
-        """Load credentials from env file"""
+        """Load credentials from env file or environment variables"""
         env_path = Path(__file__).parent / self.env_file
         
         if not env_path.exists():
             print(f"❌ Error: {self.env_file} not found!")
+            print("✅ Using environment variables instead")
+            # Load from environment variables
+            for key, value in os.environ.items():
+                if key.startswith(('FACEBOOK_', 'GOOGLE_', 'GMAIL_')):
+                    self.credentials[key] = value
+            print(f"✅ Loaded {len(self.credentials)} credentials from environment")
             return
         
         try:
@@ -89,6 +95,9 @@ class PasswordManager:
         for key in possible_keys:
             if key in self.credentials:
                 return self.credentials[key]
+            # Also check environment variables directly
+            if key in os.environ:
+                return os.environ[key]
         
         print(f"⚠️  API key not found for service: {service}")
         return None
