@@ -12,6 +12,14 @@ import re
 from datetime import datetime
 from password_manager import PasswordManager
 from csv_manager import CSVManager
+try:
+    from ai_chat_engine import get_ai_engine
+    ai_engine = get_ai_engine()
+    AI_AVAILABLE = True
+except ImportError:
+    ai_engine = None
+    AI_AVAILABLE = False
+    print("⚠️ AI Chat Engine not available, using fallback responses")
 
 class FacebookBot:
     def __init__(self):
@@ -151,96 +159,71 @@ class FacebookBot:
         
         self.conversations[user_id].update(updates)
     
+    def _fallback_response(self, message_text):
+        """Fallback response when AI is not available"""
+        message_lower = message_text.lower()
+        
+        # Smart fallback responses
+        if any(word in message_lower for word in ['שלום', 'היי', 'בוקר', 'ערב']):
+            return "שלום! ברוכים הבאים ל-VIV Clinic! 🏥 איך אני יכול לעזור לכם היום?"
+        
+        elif any(word in message_lower for word in ['תור', 'זמן', 'פגישה', 'לקבוע']):
+            return "אשמח לעזור לכם לקבוע תור! 📅 אנא צרו קשר בטלפון 03-1234567 או ציינו את סוג הטיפול הרצוי."
+        
+        elif any(word in message_lower for word in ['מחיר', 'עלות', 'כמה', 'עולה']):
+            return "המחירים שלנו תחרותיים ותלויים בסוג הטיפול. 💰 לפרטים מדויקים אנא צרו קשר: 03-1234567"
+        
+        elif any(word in message_lower for word in ['כתובת', 'איפה', 'מיקום', 'נמצא']):
+            return "🏥 VIV Clinic נמצאת ב:\nרחוב הרצל 45, תל אביב\n📞 03-1234567"
+        
+        elif any(word in message_lower for word in ['שעות', 'פתוח', 'סגור', 'מתי']):
+            return "🕐 שעות הפתיחה שלנו:\nראשון-חמישי: 8:00-18:00\nשישי: 8:00-13:00\nשבת: סגור"
+        
+        elif any(word in message_lower for word in ['תודה', 'תנקיו', 'אסור']):
+            return "בשמחה! 😊 VIV Clinic תמיד כאן בשבילכם!"
+        
+        else:
+            return "תודה על פנייתכם ל-VIV Clinic! 🏥 נציג שלנו יחזור אליכם בהקדם. לשירות מיידי: 03-1234567"
+    
     def process_message(self, user_id, message_text, source_type="messenger", post_id=None):
-        """Process incoming message and respond appropriately"""
+        """Process incoming message and respond appropriately using AI"""
         try:
             # Get user info
             user_name = self.extract_name_from_profile(user_id)
-            conversation = self.get_conversation_state(user_id)
             
-            # Update name if not set
-            if not conversation["name"]:
-                conversation["name"] = user_name
-                self.update_conversation_state(user_id, {"name": user_name})
-            
-            # Set post source if from comment
-            if source_type == "comment" and post_id:
-                conversation["post_source"] = post_id
-                self.update_conversation_state(user_id, {"post_source": post_id})
-            
-            # Process based on conversation stage
-            if conversation["stage"] == "greeting":
-                # Send greeting and ask for phone
-                response = self.responses["greeting"].format(name=user_name)
-                response += "\n\n" + self.responses["ask_phone"]
-                
-                if source_type == "messenger":
-                    self.send_message(user_id, response)
-                else:
-                    return response
-                
-                self.update_conversation_state(user_id, {"stage": "waiting_phone"})
-                
-            elif conversation["stage"] == "waiting_phone":
-                # Check if message contains phone number
-                phone = self.extract_phone_number(message_text)
-                
-                if phone:
-                    self.update_conversation_state(user_id, {
-                        "phone": phone,
-                        "stage": "waiting_topic"
-                    })
-                    
-                    response = self.responses["ask_topic"]
-                    
-                    if source_type == "messenger":
-                        self.send_message(user_id, response)
-                    else:
-                        return response
-                else:
-                    # Ask for phone again
-                    response = "לא זיהיתי מספר טלפון בהודעה. " + self.responses["ask_phone"]
-                    
-                    if source_type == "messenger":
-                        self.send_message(user_id, response)
-                    else:
-                        return response
-                        
-            elif conversation["stage"] == "waiting_topic":
-                # Save topic and complete conversation
-                self.update_conversation_state(user_id, {
-                    "topic": message_text,
-                    "stage": "completed"
-                })
-                
-                # Save to Google Sheets
-                self.save_to_csv(user_id, conversation)
-                
-                # Send confirmation
-                response = self.responses["confirmation"].format(
-                    name=conversation["name"],
-                    phone=conversation["phone"],
-                    topic=message_text
-                )
-                
-                if source_type == "messenger":
-                    self.send_message(user_id, response)
-                else:
-                    return response
-                
-                # Reset conversation
-                del self.conversations[user_id]
-                
+            # Generate AI response
+            if AI_AVAILABLE and ai_engine:
+                ai_response, is_ai_generated = ai_engine.generate_response(user_id, message_text)
+                print(f"🤖 AI Response ({'AI' if is_ai_generated else 'Fallback'}): {ai_response}")
             else:
-                # Conversation completed, start new one
-                self.conversations[user_id] = {
-                    "stage": "greeting",
+                ai_response = self._fallback_response(message_text)
+            
+            # Check if user provided contact info during conversation
+            phone = self.extract_phone_number(message_text)
+            
+            # Save conversation data if we have contact info
+            if phone or any(keyword in message_text.lower() for keyword in ['תור', 'לקבוע', 'פגישה']):
+                customer_data = {
                     "name": user_name,
-                    "phone": None,
-                    "topic": None,
-                    "post_source": post_id
+                    "phone": phone if phone else "לא סופק",
+                    "topic": message_text[:100],  # First 100 chars as topic
+                    "source": f"Facebook_{source_type}",
+                    "post_id": post_id if post_id else "N/A",
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
-                return self.process_message(user_id, message_text, source_type, post_id)
+                
+                # Save to CSV
+                self.save_to_csv(user_id, customer_data)
+                
+                # Add contact collection message if no phone provided
+                if not phone and any(keyword in message_text.lower() for keyword in ['תור', 'לקבוע', 'פגישה']):
+                    ai_response += "\n\n📞 כדי לקבוע תור, אשמח אם תשאיר מספר טלפון לחזרה או תתקשר ישירות: 03-1234567"
+            
+            # Send response
+            if source_type == "messenger":
+                self.send_message(user_id, ai_response)
+            else:
+                return ai_response
                 
         except Exception as e:
             print(f"❌ Error processing message: {e}")

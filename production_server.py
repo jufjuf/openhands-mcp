@@ -9,6 +9,14 @@ from flask import Flask, request, jsonify
 import json
 import requests
 
+# Try to import AI chat manager
+try:
+    from ai_chat_manager import ai_chat_manager
+    AI_AVAILABLE = True
+except ImportError:
+    AI_AVAILABLE = False
+    print("⚠️ AI Chat Manager not available, using fallback responses")
+
 app = Flask(__name__)
 
 # Get credentials from environment variables
@@ -24,6 +32,15 @@ try:
 except ImportError:
     csv_manager = None
 
+# Initialize AI chat engine
+try:
+    from ai_chat_engine import get_ai_engine
+    ai_engine = get_ai_engine()
+    print("✅ AI chat engine initialized successfully")
+except ImportError as e:
+    print(f"❌ Error initializing AI engine: {e}")
+    ai_engine = None
+
 @app.route('/')
 def home():
     return """
@@ -38,6 +55,7 @@ def home():
                 <li>✅ Access Token: תקף</li>
                 <li>✅ Page ID: 103991726050308</li>
                 <li>✅ CSV Database: פעיל</li>
+                <li>🤖 AI Chat Engine: """ + ("פעיל" if ai_engine else "לא זמין") + """</li>
             </ul>
         </div>
         
@@ -49,6 +67,8 @@ def home():
                 <li><a href="/messages" style="color: #1976d2;">/messages</a> - הודעות אחרונות מפייסבוק</li>
                 <li><a href="/customers" style="color: #1976d2;">/customers</a> - רשימת לקוחות</li>
                 <li><a href="/stats" style="color: #1976d2;">/stats</a> - סטטיסטיקות</li>
+                <li><a href="/ai/status" style="color: #9c27b0;">🧠 /ai/status</a> - סטטוס מנוע AI</li>
+                <li><a href="/ai/test" style="color: #9c27b0;">🧪 /ai/test</a> - בדיקת מנוע AI</li>
                 <li><strong>/webhook</strong> - נקודת קבלה לפייסבוק</li>
             </ul>
         </div>
@@ -271,10 +291,13 @@ def send_facebook_message(recipient_id, message_text):
 @app.route('/health')
 def health_check():
     """Health check endpoint"""
+    ai_status = "active" if ai_engine and ai_engine.active_provider != "fallback" else "fallback"
     return jsonify({
         "status": "healthy",
         "service": "VIV Clinic Facebook Bot",
-        "version": "1.0.2"
+        "version": "1.1.0",
+        "ai_engine": ai_status,
+        "ai_provider": ai_engine.active_provider if ai_engine else "none"
     })
 
 @app.route('/debug')
@@ -552,21 +575,30 @@ def chat_send():
             except Exception as e:
                 print(f"Error saving test customer: {e}")
         
-        # Generate bot response
-        if 'שלום' in message or 'היי' in message or 'hello' in message.lower():
-            bot_response = "שלום! ברוכים הבאים ל-VIV Clinic! 🏥 איך אני יכול לעזור לכם היום?"
-        elif 'תור' in message or 'זמן' in message:
-            bot_response = "אשמח לעזור לכם לקבוע תור! 📅 אנא ציינו את סוג הטיפול הרצוי ותאריך מועדף."
-        elif 'מחיר' in message or 'עלות' in message or 'כמה' in message:
-            bot_response = "המחירים שלנו תלויים בסוג הטיפול. 💰 נציג שלנו יחזור אליכם עם פרטים מדויקים."
-        elif 'כתובת' in message or 'איפה' in message or 'מיקום' in message:
-            bot_response = "אנחנו נמצאים ברחוב הרופאים 123, תל אביב. 📍 ניתן להגיע גם בתחבורה ציבורית!"
-        elif 'שעות' in message or 'פתוח' in message:
-            bot_response = "אנחנו פתוחים א'-ה' 8:00-18:00, ו' 8:00-13:00. 🕐 בשבת אנחנו סגורים."
-        elif 'תודה' in message or 'תנקיו' in message:
-            bot_response = "בשמחה! 😊 אנחנו כאן בשבילכם. יום טוב!"
+        # Generate bot response using AI engine
+        if ai_engine:
+            try:
+                bot_response, is_ai_generated = ai_engine.generate_response(sender_id, message)
+                print(f"🤖 AI Response ({'AI' if is_ai_generated else 'Fallback'}): {bot_response}")
+            except Exception as e:
+                print(f"❌ AI engine error: {e}")
+                bot_response = "מצטער, יש לי בעיה טכנית כרגע. אנא נסו שוב או צרו קשר בטלפון 03-1234567 🏥"
         else:
-            bot_response = "תודה על פנייתכם! 🏥 נציג שלנו יחזור אליכם בהקדם עם מענה מפורט."
+            # Fallback to simple responses if AI not available
+            if 'שלום' in message or 'היי' in message or 'hello' in message.lower():
+                bot_response = "שלום! ברוכים הבאים ל-VIV Clinic! 🏥 איך אני יכול לעזור לכם היום?"
+            elif 'תור' in message or 'זמן' in message:
+                bot_response = "אשמח לעזור לכם לקבוע תור! 📅 אנא ציינו את סוג הטיפול הרצוי ותאריך מועדף."
+            elif 'מחיר' in message or 'עלות' in message or 'כמה' in message:
+                bot_response = "המחירים שלנו תלויים בסוג הטיפול. 💰 נציג שלנו יחזור אליכם עם פרטים מדויקים."
+            elif 'כתובת' in message or 'איפה' in message or 'מיקום' in message:
+                bot_response = "אנחנו נמצאים ברחוב הרופאים 123, תל אביב. 📍 ניתן להגיע גם בתחבורה ציבורית!"
+            elif 'שעות' in message or 'פתוח' in message:
+                bot_response = "אנחנו פתוחים א'-ה' 8:00-18:00, ו' 8:00-13:00. 🕐 בשבת אנחנו סגורים."
+            elif 'תודה' in message or 'תנקיו' in message:
+                bot_response = "בשמחה! 😊 אנחנו כאן בשבילכם. יום טוב!"
+            else:
+                bot_response = "תודה על פנייתכם! 🏥 נציג שלנו יחזור אליכם בהקדם עם מענה מפורט."
         
         return jsonify({
             'status': 'success',
@@ -578,6 +610,68 @@ def chat_send():
             'status': 'error',
             'response': f'שגיאה: {str(e)}'
         }), 500
+
+@app.route('/ai/status')
+def ai_status():
+    """Get AI engine status and configuration"""
+    if not ai_engine:
+        return jsonify({
+            'status': 'disabled',
+            'message': 'AI engine not initialized',
+            'available_providers': []
+        })
+    
+    return jsonify({
+        'status': 'active',
+        'provider': ai_engine.active_provider,
+        'available_providers': ai_engine.available_providers,
+        'message': f'AI engine running with {ai_engine.active_provider}'
+    })
+
+@app.route('/ai/test')
+def ai_test():
+    """Test AI engine with sample messages"""
+    if not ai_engine:
+        return jsonify({'error': 'AI engine not available'})
+    
+    test_messages = [
+        "שלום, אני רוצה לקבוע תור",
+        "כמה עולה טיפול שיניים?",
+        "איפה אתם נמצאים?"
+    ]
+    
+    results = []
+    for i, message in enumerate(test_messages):
+        try:
+            response, is_ai = ai_engine.generate_response(f"test_user_{i}", message)
+            results.append({
+                'message': message,
+                'response': response,
+                'is_ai_generated': is_ai
+            })
+        except Exception as e:
+            results.append({
+                'message': message,
+                'error': str(e)
+            })
+    
+    return jsonify({
+        'status': 'success',
+        'provider': ai_engine.active_provider,
+        'test_results': results
+    })
+
+@app.route('/ai/clear/<user_id>')
+def ai_clear_conversation(user_id):
+    """Clear conversation history for a user"""
+    if not ai_engine:
+        return jsonify({'error': 'AI engine not available'})
+    
+    ai_engine.clear_conversation(user_id)
+    return jsonify({
+        'status': 'success',
+        'message': f'Conversation cleared for user {user_id}'
+    })
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
