@@ -73,10 +73,20 @@ def home():
 def test_bot():
     """Test bot functionality"""
     try:
+        # Debug environment variables first
+        debug_info = {
+            "FACEBOOK_ACCESS_TOKEN": "✅ Set" if FACEBOOK_ACCESS_TOKEN else "❌ Missing",
+            "FACEBOOK_PAGE_ID": "✅ Set" if FACEBOOK_PAGE_ID else "❌ Missing",
+            "FACEBOOK_APP_ID": "✅ Set" if FACEBOOK_APP_ID else "❌ Missing",
+            "token_length": len(FACEBOOK_ACCESS_TOKEN) if FACEBOOK_ACCESS_TOKEN else 0,
+            "token_starts_with": FACEBOOK_ACCESS_TOKEN[:10] + "..." if FACEBOOK_ACCESS_TOKEN else "None"
+        }
+        
         if not FACEBOOK_ACCESS_TOKEN:
             return jsonify({
                 "status": "❌ Error",
-                "error": "FACEBOOK_ACCESS_TOKEN not found in environment variables"
+                "error": "FACEBOOK_ACCESS_TOKEN not found in environment variables",
+                "debug": debug_info
             })
             
         url = f"https://graph.facebook.com/v18.0/me"
@@ -92,23 +102,21 @@ def test_bot():
                 "page_id": data.get("id"),
                 "access_token_valid": True,
                 "server_status": "Production Ready",
-                "environment_vars": {
-                    "FACEBOOK_ACCESS_TOKEN": "✅ Set" if FACEBOOK_ACCESS_TOKEN else "❌ Missing",
-                    "FACEBOOK_PAGE_ID": "✅ Set" if FACEBOOK_PAGE_ID else "❌ Missing",
-                    "FACEBOOK_APP_ID": "✅ Set" if FACEBOOK_APP_ID else "❌ Missing"
-                }
+                "debug": debug_info
             })
         else:
             return jsonify({
                 "status": "❌ Error",
                 "error": response.text,
-                "response_code": response.status_code
+                "response_code": response.status_code,
+                "debug": debug_info
             })
             
     except Exception as e:
         return jsonify({
             "status": "❌ Error",
-            "error": str(e)
+            "error": str(e),
+            "debug": debug_info if 'debug_info' in locals() else "Debug info not available"
         })
 
 @app.route('/messages')
