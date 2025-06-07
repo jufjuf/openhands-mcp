@@ -273,7 +273,7 @@ def health_check():
     return jsonify({
         "status": "healthy",
         "service": "VIV Clinic Facebook Bot",
-        "version": "1.0.0"
+        "version": "1.0.1"
     })
 
 @app.route('/debug')
