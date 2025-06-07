@@ -93,17 +93,105 @@ Use the following configuration under `Settings → MCP` in OpenHands:
    node --version  # Should be 18.0.0 or higher
    ```
 
-4. **Test the scripts:**
+4. **Set up credentials (optional):**
+   ```bash
+   # Copy the template
+   cp .env.example .env
+   
+   # Edit .env with your actual credentials
+   nano .env  # or use your preferred editor
+   ```
+
+5. **Test the scripts:**
    ```bash
    # Test Python script
    echo '{}' | python3 analyze_audio.py
    
-   # Test Node.js script
+   # Test Node.js script (basic)
    echo '{"url": "https://httpbin.org/json"}' | node call_api.js
+   
+   # Test Node.js script with auth
+   echo '{"url": "https://api.example.com", "auth_type": "bearer"}' | node call_api_with_auth.js
    
    # Test shell script
    ./run_lint.sh
+   
+   # Test environment loading
+   python3 load_env.py
    ```
+
+---
+
+## 🔐 Credentials Management
+
+### Setting up API Keys and Credentials
+
+1. **Copy the environment template:**
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Edit `.env` with your credentials:**
+   ```bash
+   # Social Media
+   FACEBOOK_ACCESS_TOKEN=your_actual_token
+   EMAIL_ADDRESS=yufit15@walla.co.il
+   EMAIL_PASSWORD=your_email_password
+   
+   # API Keys
+   OPENAI_API_KEY=sk-your_openai_key
+   GOOGLE_API_KEY=your_google_key
+   ```
+
+3. **Use the password manager:**
+   ```bash
+   # List all available services
+   python3 password_manager.py list
+   
+   # Show credentials for a service (passwords partially hidden)
+   python3 password_manager.py show facebook
+   
+   # Get specific credentials
+   python3 password_manager.py password google
+   python3 password_manager.py email zapier
+   python3 password_manager.py api twilio
+   
+   # Get login data as JSON
+   python3 auto_login.py facebook
+   ```
+
+4. **Use authenticated API calls:**
+   ```bash
+   # Facebook API with authentication
+   echo '{"url": "https://graph.facebook.com/me", "auth_type": "facebook"}' | node call_api_with_auth.js
+   
+   # Custom API with bearer token
+   echo '{"url": "https://api.example.com/data", "auth_type": "bearer"}' | node call_api_with_auth.js
+   ```
+
+### Password Management Tools
+
+The project includes built-in password management tools:
+
+- **`password_manager.py`** - Main password manager
+  - List all services: `python3 password_manager.py list`
+  - Show service info: `python3 password_manager.py show <service>`
+  - Get specific credentials: `python3 password_manager.py password <service>`
+
+- **`auto_login.py`** - Auto-login helper
+  - Get login data as JSON: `python3 auto_login.py <service>`
+  - Perfect for automation scripts
+
+- **`credentials.env`** - Your actual credentials (keep private!)
+- **`.env.example`** - Template for sharing
+
+### Security Notes
+- ✅ `.env` files are automatically ignored by git
+- ✅ Never commit credentials to version control
+- ✅ Use environment variables in production
+- ✅ Rotate API keys regularly
+- ✅ Passwords are partially hidden when displayed
+- ✅ Secure credential loading and management
 
 ---
 
