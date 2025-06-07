@@ -11,12 +11,12 @@ import requests
 import re
 from datetime import datetime
 from password_manager import PasswordManager
-from google_sheets_manager import GoogleSheetsManager
+from csv_manager import CSVManager
 
 class FacebookBot:
     def __init__(self):
         self.pm = PasswordManager()
-        self.sheets = GoogleSheetsManager()
+        self.csv_manager = CSVManager()
         self.access_token = self.pm.get_api_key("facebook")
         self.page_id = self.pm.credentials.get("FACEBOOK_PAGE_ID")
         self.base_url = "https://graph.facebook.com/v18.0"
@@ -34,36 +34,19 @@ class FacebookBot:
         self.conversations = {}
         
     def get_page_access_token(self):
-        """Get page access token from user access token"""
-        try:
-            url = f"{self.base_url}/me/accounts"
-            params = {"access_token": self.access_token}
-            
-            response = requests.get(url, params=params)
-            data = response.json()
-            
-            if "data" in data:
-                for page in data["data"]:
-                    if page["id"] == self.page_id:
-                        return page["access_token"]
-            
-            print("❌ Page access token not found")
-            return self.access_token
-            
-        except Exception as e:
-            print(f"❌ Error getting page token: {e}")
-            return self.access_token
+        """Get page access token - we already have it"""
+        # הטוקן שיש לנו כבר הוא Page Access Token
+        return self.access_token
     
     def send_message(self, recipient_id, message):
         """Send message via Facebook Messenger"""
         try:
-            page_token = self.get_page_access_token()
             url = f"{self.base_url}/me/messages"
             
             payload = {
                 "recipient": {"id": recipient_id},
                 "message": {"text": message},
-                "access_token": page_token
+                "access_token": self.access_token
             }
             
             response = requests.post(url, json=payload)
@@ -231,7 +214,7 @@ class FacebookBot:
                 })
                 
                 # Save to Google Sheets
-                self.save_to_sheets(user_id, conversation)
+                self.save_to_csv(user_id, conversation)
                 
                 # Send confirmation
                 response = self.responses["confirmation"].format(
@@ -268,32 +251,26 @@ class FacebookBot:
             else:
                 return error_response
     
-    def save_to_sheets(self, user_id, conversation):
-        """Save conversation data to Google Sheets"""
+    def save_to_csv(self, user_id, conversation):
+        """Save conversation data to CSV file"""
         try:
-            # Prepare data for sheets
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            row_data = [
-                timestamp,  # תאריך ושעה
-                conversation.get("name", ""),  # שם
-                conversation.get("phone", ""),  # טלפון
-                conversation.get("topic", ""),  # נושא התעניינות
-                conversation.get("post_source", ""),  # מקור (פוסט)
-                user_id,  # Facebook User ID
-                "ממתין לטיפול"  # סטטוס
-            ]
-            
-            # Add to Google Sheets
-            success = self.sheets.add_customer_inquiry(row_data)
+            # Add customer to CSV
+            success = self.csv_manager.add_customer(
+                name=conversation.get("name", ""),
+                phone=conversation.get("phone", ""),
+                topic=conversation.get("topic", ""),
+                source="Facebook",
+                status="ממתין לטיפול",
+                notes=f"Facebook User ID: {user_id}"
+            )
             
             if success:
-                print(f"✅ Data saved to Google Sheets for {conversation['name']}")
+                print(f"✅ Data saved to CSV for {conversation['name']}")
             else:
-                print(f"❌ Failed to save data to Google Sheets")
+                print(f"❌ Failed to save data to CSV")
                 
         except Exception as e:
-            print(f"❌ Error saving to sheets: {e}")
+            print(f"❌ Error saving to CSV: {e}")
     
     def get_recent_messages(self):
         """Get recent messages from Facebook page"""
