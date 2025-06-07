@@ -268,6 +268,20 @@ def health_check():
         "version": "1.0.0"
     })
 
+@app.route('/debug')
+def debug_env():
+    """Debug environment variables"""
+    return jsonify({
+        "environment_vars": {
+            "FACEBOOK_ACCESS_TOKEN": "✅ Set" if FACEBOOK_ACCESS_TOKEN else "❌ Missing",
+            "FACEBOOK_PAGE_ID": "✅ Set" if FACEBOOK_PAGE_ID else "❌ Missing", 
+            "FACEBOOK_APP_ID": "✅ Set" if FACEBOOK_APP_ID else "❌ Missing",
+            "FACEBOOK_VERIFY_TOKEN": "✅ Set" if FACEBOOK_VERIFY_TOKEN else "❌ Missing"
+        },
+        "token_length": len(FACEBOOK_ACCESS_TOKEN) if FACEBOOK_ACCESS_TOKEN else 0,
+        "token_prefix": FACEBOOK_ACCESS_TOKEN[:20] + "..." if FACEBOOK_ACCESS_TOKEN else "None"
+    })
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
